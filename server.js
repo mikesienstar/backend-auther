@@ -29,9 +29,9 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 
-const CLIENT_URL = ["https://fingerprint-auther-frontend.onrender.com"];
-const RP_ID = "fingerprint-auther-frontend.onrender.com"; // Match your Render frontend domain
-const DJANGO_API_URL = "https://human-resource-management-ajfy.onrender.com/"; // Your Django server URL
+const CLIENT_URL = ["https://fronten-authn.onrender.com"];
+const RP_ID = "fronten-authn.onrender.com"; // Match your Render frontend domain
+const DJANGO_API_URL = "https://biotracker-r7j6.onrender.com/"; // Your Django server URL
 
 app.use(cors({ origin: CLIENT_URL, credentials: true }));
 
