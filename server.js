@@ -31,7 +31,7 @@ app.use(cookieParser());
 
 const CLIENT_URL = "https://fronten-authn.onrender.com";
 const RP_ID = "fronten-authn.onrender.com"; // Match your Render frontend domain
-const DJANGO_API_URL = "https://biotracker-r7j6.onrender.com/"; // Your Django server URL
+const DJANGO_API_URL = "https://biotracker-r7j6.onrender.com"; // Your Django server URL
 
 app.use(cors({ origin: CLIENT_URL, credentials: true }));
 
@@ -102,51 +102,71 @@ app.get("/init-register", async (req, res) => {
   }
 });
 
+
 app.post("/verify-register", async (req, res) => {
   try {
-    const regInfo = JSON.parse(req.cookies.regInfo);
-    if (!regInfo) {
-      return res.status(400).json({ error: "Registration info not found" });
+    // 1. Validate cookies and input
+    if (!req.cookies?.regInfo) {
+      return res.status(400).json({ error: "Missing registration session" });
     }
 
-    // Convert stored base64 userHandle back to Uint8Array
-    const expectedUserID = isoBase64URL.toBuffer(regInfo.userHandle);
+    const regInfo = JSON.parse(req.cookies.regInfo);
+    if (!regInfo?.challenge || !regInfo?.userHandle || !regInfo?.email) {
+      return res.status(400).json({ error: "Invalid registration data" });
+    }
 
+    // 2. Verify registration
+    const expectedUserID = isoBase64URL.toBuffer(regInfo.userHandle);
     const verification = await verifyRegistrationResponse({
       response: req.body,
       expectedChallenge: regInfo.challenge,
       expectedOrigin: CLIENT_URL,
       expectedRPID: RP_ID,
-      expectedUserID: expectedUserID, // Verify against expected user ID
+      expectedUserID: expectedUserID,
       requireUserVerification: false
     });
 
-    if (verification.verified && verification.registrationInfo) {
-      // Decode the userHandle to get our original customUserID
-      const customUserID = isoUint8Array.toUTF8String(
-        verification.registrationInfo.userID
-      );
+    console.log("Verification result:", {
+      verified: verification.verified,
+      error: verification.error?.message
+    });
 
-      // Save to Django
-      await axios.post(`${DJANGO_API_URL}/register-credential`, {
-        user_id: customUserID,
-        email: regInfo.email,
-        credential_id: isoBase64URL.fromBuffer(verification.registrationInfo.credentialID),
-        public_key: isoBase64URL.fromBuffer(verification.registrationInfo.credentialPublicKey),
-        counter: verification.registrationInfo.counter,
-        device_type: verification.registrationInfo.credentialDeviceType,
-        backed_up: verification.registrationInfo.credentialBackedUp,
-        transports: req.body.response.transports || []
+    if (!verification.verified || !verification.registrationInfo) {
+      return res.status(400).json({ 
+        verified: false, 
+        error: verification.error?.message || "Verification failed" 
       });
-
-      res.clearCookie("regInfo");
-      return res.json({ verified: true });
     }
-    
-    return res.status(400).json({ verified: false, error: "Verification failed" });
+
+    // 3. Save to Django
+    const customUserID = isoUint8Array.toUTF8String(verification.registrationInfo.userID);
+    const djangoResponse = await axios.post(`${DJANGO_API_URL}/register-credential`, {
+      user_id: customUserID,
+      email: regInfo.email,
+      credential_id: isoBase64URL.fromBuffer(verification.registrationInfo.credentialID),
+      public_key: isoBase64URL.fromBuffer(verification.registrationInfo.credentialPublicKey),
+      counter: verification.registrationInfo.counter,
+      device_type: verification.registrationInfo.credentialDeviceType,
+      backed_up: verification.registrationInfo.credentialBackedUp,
+      transports: req.body.response.transports || []
+    }, {
+      timeout: 5000
+    });
+
+    // 4. Clean up and respond
+    res.clearCookie("regInfo");
+    return res.json({ 
+      verified: true,
+      user: regInfo.email 
+    });
+
   } catch (error) {
     console.error("Verification error:", error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ 
+      error: "Internal server error",
+      details: error.message,
+      stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+    });
   }
 });
 
