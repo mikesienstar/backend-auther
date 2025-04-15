@@ -69,7 +69,8 @@ app.get("/init-register", async (req, res) => {
       details: error.message
     });
   }
-
+  
+  try{
     // 2. Generate a custom userID (using email as the base)
     const customUserID = `webauthn:${email}`; // Prefix helps identify WebAuthn users
     const userIDBuffer =
@@ -107,7 +108,7 @@ app.get("/init-register", async (req, res) => {
 
     return res.json(options);
     
-  } catch (error) {
+  }catch (error) {
     console.error("Registration init error:", error);
     return res.status(500).json({ 
       error: "Internal server error",
