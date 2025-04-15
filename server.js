@@ -49,12 +49,26 @@ app.get("/init-register", async (req, res) => {
     return res.status(400).json({ error: "Email is required" });
   }
 
+  // Improved version for /init-register
   try {
-    // 1. Check if user exists in Django
-    const djangoResponse = await axios.get(`${DJANGO_API_URL}/check-user?email=${email}`);
-    if (djangoResponse.data.exists) {
-      return res.status(400).json({ error: "User already exists" });
+    const djangoResponse = await axios.get(`${DJANGO_API_URL}/check-user`, {
+      params: { email },
+      timeout: 3000 // 3 second timeout
+    });
+    
+    if (djangoResponse.data?.exists) {
+      return res.status(400).json({ 
+        error: "Email already registered",
+        suggestion: "Try logging in instead" 
+      });
     }
+  } catch (error) {
+    console.error("Django check failed:", error);
+    return res.status(502).json({
+      error: "Could not verify email availability",
+      details: error.message
+    });
+  }
 
     // 2. Generate a custom userID (using email as the base)
     const customUserID = `webauthn:${email}`; // Prefix helps identify WebAuthn users
